@@ -71,6 +71,13 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+static bool thread_priority_more (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED); /* NEW: comparator for ready_list ordering. */
+static void ready_list_insert (struct thread *t);                                                         /* NEW: insert thread into ready_list in priority order. */
+static void maybe_yield_to_higher (void);                                                                  /* NEW: immediate preemption check. */
+
+static int donated_max_priority (struct thread *t);                                                        /* CHANGED: list helpers are non-const in Pintos list API. */
+static void thread_refresh_priority_depth (struct thread *t, int depth);                                   /* NEW: refresh priority and propagate up donation chain. */
+
 /** Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -201,6 +208,9 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  if (t->priority > thread_current ()->priority)  /* NEW: immediate preemption if the new thread outranks the current one. */
+    thread_yield ();                               /* NEW: yield so the highest-priority ready thread runs now. */
+
   return tid;
 }
 
@@ -237,7 +247,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  ready_list_insert (t);                           /* CHANGED: keep ready_list ordered by effective priority. */
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -308,7 +318,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    ready_list_insert (cur);                       /* CHANGED: reinsert current thread in priority order. */
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -335,7 +345,15 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  enum intr_level old_level = intr_disable ();     /* NEW: avoid races with scheduler queues while changing priority. */
+  struct thread *cur = thread_current ();          /* NEW: cached current thread pointer. */
+
+  cur->base_priority = new_priority;               /* NEW: update the user-set/original priority. */
+  thread_refresh_priority (cur);                   /* NEW: recompute effective priority with any active donations. */
+
+  intr_set_level (old_level);                      /* NEW: restore interrupt level after atomic update. */
+
+  maybe_yield_to_higher ();                        /* NEW: if we are no longer the highest priority, yield immediately. */
 }
 
 /** Returns the current thread's priority. */
@@ -344,6 +362,80 @@ thread_get_priority (void)
 {
   return thread_current ()->priority;
 }
+
+void
+thread_refresh_priority (struct thread *t)
+{                                                  /* CHANGED: wrapper that also propagates updates up the lock chain. */
+  thread_refresh_priority_depth (t, 0);             /* NEW: refresh with a bounded recursion depth. */
+}                                                  /* NEW */
+
+static void
+thread_refresh_priority_depth (struct thread *t, int depth)
+{                                                  /* NEW: start depth-bounded refresh. */
+  ASSERT (t != NULL);                               /* NEW */
+
+  int donated = donated_max_priority (t);           /* NEW */
+  t->priority = t->base_priority;                   /* NEW */
+  if (donated > t->priority)                        /* NEW */
+    t->priority = donated;                          /* NEW */
+
+  if (t->status == THREAD_READY)                    /* NEW */
+    {                                               /* NEW */
+      list_remove (&t->elem);                       /* NEW */
+      ready_list_insert (t);                        /* NEW */
+    }                                               /* NEW */
+
+  if (depth < 8                                     /* NEW: depth limit from lab handout. */
+      && t->waiting_lock != NULL                    /* NEW: if this thread is waiting on a lock... */
+      && t->waiting_lock->holder != NULL)           /* NEW: ...and that lock has a holder... */
+    thread_refresh_priority_depth (t->waiting_lock->holder, depth + 1); /* NEW: propagate updated priority upward. */
+}                                                  /* NEW: end depth-bounded refresh. */
+
+static int
+donated_max_priority (struct thread *t)
+{                                                  /* NEW: start donated max computation. */
+  int maxp = PRI_MIN;                               /* NEW: if no donors, treat as lowest. */
+  struct list_elem *e;                              /* CHANGED: Pintos list iterator type is non-const. */
+
+  for (e = list_begin (&t->donations);              /* NEW: walk all donors. */
+       e != list_end (&t->donations);               /* NEW */
+       e = list_next (e))                           /* NEW */
+    {                                               /* NEW */
+      struct thread *d = list_entry (e, struct thread, donation_elem);       /* CHANGED: donor thread (non-const). */
+      if (d->priority > maxp)                       /* NEW: track highest effective donor priority. */
+        maxp = d->priority;                         /* NEW */
+    }                                               /* NEW */
+
+  return maxp;                                      /* NEW */
+}                                                  /* NEW: end donated max computation. */
+
+static bool
+thread_priority_more (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{                                                  /* NEW: comparator for ready_list. */
+  const struct thread *ta = list_entry (a, struct thread, elem); /* NEW */
+  const struct thread *tb = list_entry (b, struct thread, elem); /* NEW */
+  return ta->priority > tb->priority;               /* NEW: higher priority should come first. */
+}                                                  /* NEW */
+
+static void
+ready_list_insert (struct thread *t)
+{                                                  /* NEW: start ready_list ordered insert. */
+  list_insert_ordered (&ready_list, &t->elem, thread_priority_more, NULL); /* NEW */
+}                                                  /* NEW */
+
+static void
+maybe_yield_to_higher (void)
+{                                                  /* NEW: start preemption helper. */
+  if (intr_context ())                              /* NEW: cannot yield directly in interrupt context. */
+    return;                                         /* NEW */
+
+  if (list_empty (&ready_list))                     /* NEW */
+    return;                                         /* NEW */
+
+  struct thread *front = list_entry (list_front (&ready_list), struct thread, elem); /* NEW */
+  if (front->priority > thread_current ()->priority) /* NEW: someone higher is ready. */
+    thread_yield ();                                /* NEW: give up CPU immediately. */
+}                                                  /* NEW: end preemption helper. */
 
 /** Sets the current thread's nice value to NICE. */
 void
@@ -461,7 +553,11 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
-  t->priority = priority;
+  t->priority = priority;                           /* CHANGED: will represent effective priority after donation is implemented. */
+  t->base_priority = priority;                      /* NEW: store original priority for donation rollback. */
+  list_init (&t->donations);                        /* NEW: init empty donor list. */
+  t->waiting_lock = NULL;                           /* NEW: not waiting on any lock initially. */
+  t->wakeup_tick = 0;                               /* NEW: not sleeping initially. */
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
