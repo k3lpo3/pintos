@@ -5,7 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 
-struct lock;                                  /* NEW: forward declaration for priority donation. */
+struct lock;                                  // Forward declaration for priority donation.
 
 /** States in a thread's life cycle. */
 enum thread_status
@@ -89,17 +89,17 @@ struct thread
     enum thread_status status;          /**< Thread state. */
     char name[16];                      /**< Name (for debugging purposes). */
     uint8_t *stack;                     /**< Saved stack pointer. */
-    int priority;                       /**< Priority. */ /* CHANGED: treated as effective priority once donation is implemented. */
+    int priority;                       /**< Priority. */ // Treated as effective priority once donation is implemented.
 
-    /* Alarm clock (Project 1 Task 1). */     /* NEW: section header for sleep fields. */
-    int64_t wakeup_tick;                       /* NEW: tick when this thread should wake up. */
-    struct list_elem sleep_elem;               /* NEW: list element for global sleep list. */
+    // Alarm clock (Project 1 Task 1).
+    int64_t wakeup_tick;                       // Tick when this thread should wake up.
+    struct list_elem sleep_elem;               // List element for global sleep list.
 
-    /* Priority donation (Project 1 Task 3/4). */ /* NEW: section header for donation fields. */
-    int base_priority;                         /* NEW: original (non-donated) priority set by user. */
-    struct list donations;                     /* NEW: list of threads donating to this thread. */
-    struct list_elem donation_elem;            /* NEW: list element when this thread is in another thread's donations list. */
-    struct lock *waiting_lock;                 /* NEW: lock this thread is waiting on (for nested donation). */
+    // Priority donation (Project 1 Task 3/4).
+    int base_priority;                         // Original (non-donated) priority set by user.
+    struct list donations;                     // List of threads donating to this thread.
+    struct list_elem donation_elem;            // List element when this thread is in another thread's donations list.
+    struct lock *waiting_lock;                 // Lock this thread is waiting on (for nested donation).
     struct list_elem allelem;           /**< List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
@@ -145,11 +145,11 @@ void thread_foreach (thread_action_func *, void *);
 int thread_get_priority (void);
 void thread_set_priority (int);
 
-void thread_refresh_priority (struct thread *t); /* NEW: recompute effective priority from base_priority + donations. */
+void thread_refresh_priority (struct thread *t); // Recompute effective priority from base_priority + donations.
 
 int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-#endif /**< threads/thread.h */
+#endif /* threads/thread.h */
