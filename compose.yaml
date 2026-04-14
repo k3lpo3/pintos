@@ -13,6 +13,8 @@ services:
       context: .
       target: final
     working_dir: /work/pintos
+    # Run as root so `make clean` can remove old build artifacts even if they
+    # were created by a previous container run under a different UID/GID.
     volumes:
       - .:/work/pintos
     environment:
@@ -59,3 +61,7 @@ services:
     # secrets:
     #   db-password:
     #     file: db/password.txt
+
+## Note: We intentionally do not mount `src/*/build` as volumes because Pintos'
+## `make clean` removes the whole `build/` directory. If `build/` is a mount
+## point, `rm -rf build` fails with "Device or resource busy".

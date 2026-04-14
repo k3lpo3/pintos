@@ -4,8 +4,11 @@ From the Pintos repo root:
 
 ```bash
 docker compose build
+export UID="$(id -u)" GID="$(id -g)"
 docker compose run --rm app bash
 ```
+
+If you see `The command 'docker' could not be found in this WSL 2 distro`, that is a host setup issue (Docker Desktop WSL integration not enabled, or Docker CLI not installed in that distro). Fix that first, then rerun the commands above.
 
 Inside the container:
 
@@ -24,10 +27,23 @@ PATH="$PATH:/work/pintos/src/utils" pintos --help
 PATH="$PATH:/work/pintos/src/utils" make build/alarm-single
 ```
 
+### Running Pintos in Docker (User Programs Project)
+
+Inside the container:
+
+```bash
+cd src/userprog
+make clean
+make
+cd build
+make check
+```
+
 ### Notes
 
 - `compose.yaml` bind-mounts the current repo into `/work/pintos`, so edits on your host are reflected immediately.
-- The image includes both Bochs and QEMU. The threads tests default to Bochs (`SIMULATOR = --bochs` in `src/threads/Make.vars`).
+- Build artifacts are created under `src/*/build` in the bind-mounted repo. If you previously ran Docker as root and now `make clean` fails, delete the old build directory once on your host (e.g. `sudo rm -rf src/threads/build src/userprog/build`).
+- The image includes both Bochs and QEMU, and `make check` will auto-pick a simulator (QEMU preferred) unless you override `SIMULATOR=...`.
 
 ### Deploying your application to the cloud
 
