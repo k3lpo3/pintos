@@ -558,6 +558,11 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init (&t->donations);                        // Init empty donor list.
   t->waiting_lock = NULL;                           // Not waiting on any lock initially.
   t->wakeup_tick = 0;                               // Not sleeping initially.
+#ifdef USERPROG
+  t->exit_status = -1;                              // Default: abnormal termination unless exit(status) sets it.
+  list_init (&t->children);                          // No children at thread creation.
+  t->child_status = NULL;                            // Not linked into a parent's children list by default.
+#endif
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();

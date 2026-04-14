@@ -6,6 +6,9 @@
 #include <stdint.h>
 
 struct lock;                                  // Forward declaration for priority donation.
+#ifdef USERPROG
+struct child_status;                          // Forward declaration for process_wait bookkeeping.
+#endif
 
 /** States in a thread's life cycle. */
 enum thread_status
@@ -108,6 +111,9 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /**< Page directory. */
+    int exit_status;                   /**< Process exit status (printed on exit). */
+    struct list children;              /**< List of child processes (struct child_status). */
+    struct child_status *child_status; /**< This thread's entry in its parent's children list. */
 #endif
 
     /* Owned by thread.c. */
